@@ -14,10 +14,11 @@ def test_hmr_initialization_and_forward():
     embed_dim = 256
     hmr = HierarchicalMemoryRouter(embed_dim=embed_dim)
     input_stream = torch.randn(10, embed_dim)
-    memory_output = hmr(input_stream)
+    memory_output, weights = hmr(input_stream)
     assert memory_output.dim() == 2
     assert memory_output.size(1) == embed_dim
     assert memory_output.size(0) > 0
+    assert weights.dim() == 1
 
 
 def test_hmr_integration_with_model():

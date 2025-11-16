@@ -45,16 +45,17 @@ class PDCLMBase(nn.Module):
             return torch.tensor(0.0, device=device, requires_grad=False)
         
         # Create input-target pairs for autoregressive training
-        input_stream = stream[:-target_shift]    # All but last target_shift elements
-        target_stream = stream[target_shift:]    # Shifted targets
+        input_stream = stream[:-target_shift]
+        target_stream = stream[target_shift:]
         
         # Create memory for transformer (initially zeros, can be improved)
-        memory = self.hmr(input_stream)
-        
-        # Transformer decoder processing
-        # memory: encoder outputs (for self-attention, we'll use input as memory too)
-        # tgt: target sequence (input_stream)
-        output = self.transformer(input_stream, memory)
+        memory, mem_weights = self.hmr(input_stream)
+        mem_pad_mask = (mem_weights < 0.2).unsqueeze(0)
+        output = self.transformer(
+            input_stream.unsqueeze(0),
+            memory.unsqueeze(0),
+            memory_key_padding_mask=mem_pad_mask
+        )[0]
         
         # Project to pattern space
         logits = self.output_proj(output)
@@ -73,21 +74,20 @@ class PDCLMBase(nn.Module):
             stream = self.pse(raw_text)
             if stream.size(0) == 0:
                 return ""
-            
             generated = stream.clone()
-            
             for _ in range(max_new_tokens):
                 if generated.size(0) < 2:
                     break
-                    
-                input_stream = generated[-2:]  # Use last 2 windows
-                memory = torch.zeros_like(input_stream)
-                
-                output = self.transformer(input_stream, memory)
+                input_stream = generated[-2:]
+                memory, mem_weights = self.hmr(input_stream)
+                mem_pad_mask = (mem_weights < 0.2).unsqueeze(0)
+                output = self.transformer(
+                    input_stream.unsqueeze(0),
+                    memory.unsqueeze(0),
+                    memory_key_padding_mask=mem_pad_mask
+                )[0]
                 next_pattern = self.output_proj(output[-1:])
-                
                 generated = torch.cat([generated, next_pattern], dim=0)
-            
             return generated
         
     def get_attention_weights(self, raw_text: str):
@@ -99,10 +99,13 @@ class PDCLMBase(nn.Module):
                 return None
             
             input_stream = stream[:-1]
-            memory = torch.zeros_like(input_stream)
-            
-            # This would require registering hooks to capture attention
-            output = self.transformer(input_stream, memory)
+            memory, mem_weights = self.hmr(input_stream)
+            mem_pad_mask = (mem_weights < 0.2).unsqueeze(0)
+            output = self.transformer(
+                input_stream.unsqueeze(0),
+                memory.unsqueeze(0),
+                memory_key_padding_mask=mem_pad_mask
+            )[0]
             return output
 
     def count_parameters(self):

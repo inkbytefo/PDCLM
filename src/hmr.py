@@ -23,7 +23,7 @@ class HierarchicalMemoryRouter(nn.Module):
         self.register_buffer("lsm_age", torch.zeros(num_lsm))
         self.register_buffer("last_sim_max", torch.tensor(0.0))
 
-    def forward(self, input_stream: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_stream: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         recent = input_stream[-min(8, input_stream.size(0)):, :]
         recent_mean = recent.mean(dim=0)
         pos_logits = self.router(input_stream)
@@ -56,4 +56,4 @@ class HierarchicalMemoryRouter(nn.Module):
                 self.lsm_keys[victim] = F.normalize(recent_mean, dim=0)
                 self.lsm_values[victim] = self.compress(recent_mean)
                 self.lsm_age[victim] = 0
-        return weighted
+        return weighted, avg_weights
