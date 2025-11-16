@@ -54,9 +54,9 @@ class ReflectivePDCLM(PDCLMBase):
         return task_loss + self.reflection_loss_weight * refl_loss, refl_loss
 
 
-def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str):
+def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str, max_steps: int = 6):
     model.train()
-    cot = agent.generate_cot(task, max_steps=4)
+    cot = agent.generate_cot(task, max_steps=max_steps)
     loss, refl_loss = model.reflective_forward(" ".join(cot), cot)
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
     optimizer.zero_grad()

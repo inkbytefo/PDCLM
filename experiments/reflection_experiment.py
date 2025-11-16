@@ -11,7 +11,7 @@ from src.hcl import HCLAgent, CognitiveControlModule
 
 
 def main():
-    model = ReflectivePDCLM(embed_dim=256)
+    model = ReflectivePDCLM(embed_dim=512)
     if torch.cuda.is_available():
         model = model.cuda()
     ccm = CognitiveControlModule()
@@ -20,7 +20,7 @@ def main():
     refls: list[float] = []
     task = "What is 37 * 24?"
     for _ in range(100):
-        loss, refl = reflective_train_step(model, agent, task)
+        loss, refl = reflective_train_step(model, agent, task, max_steps=6)
         losses.append(loss)
         refls.append(refl)
     fig, ax1 = plt.subplots()
