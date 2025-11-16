@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 from typing import List, Tuple
 import wandb
+import os
 
 from src.model import PDCLMBase, pretrain_step as faz1_pretrain_step
 from src.reflection import ReflectivePDCLM
 from src.hcl import HCLAgent, CognitiveControlModule, task_generator, hcl_train_step
+from src.utils import save_checkpoint
 
 
 class PDCLM(ReflectivePDCLM):
@@ -65,6 +67,7 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
     wandb.init(project="pdclm-final")
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=50)
+    os.makedirs("checkpoints", exist_ok=True)
     for epoch in range(num_epochs):
         rewards = []
         for step in range(steps_per_epoch):
@@ -80,3 +83,5 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
         avg_reward = sum(rewards) / max(len(rewards), 1)
         scheduler.step(avg_reward)
         print(f"Epoch {epoch} Avg Reward: {avg_reward:.4f}")
+        save_checkpoint(model, optimizer, epoch, float(loss.item()), f"checkpoints/pdclm_epoch_{epoch}.pt")
+    save_checkpoint(model, optimizer, num_epochs, float(loss.item()), "checkpoints/pdclm_final.pt")
