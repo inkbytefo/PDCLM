@@ -53,3 +53,14 @@ def test_hmr_eviction_policy():
     after = hmr.ssm_slots.clone().detach()
     change = (after - before).abs().sum().item()
     assert change > 0
+
+
+def test_hmr_lsm_retrieval_and_insert():
+    embed_dim = 64
+    hmr = HierarchicalMemoryRouter(embed_dim=embed_dim, num_lsm=4, lsm_threshold=0.5)
+    x = torch.randn(8, embed_dim)
+    _ = hmr(x)
+    sim1 = float(hmr.last_sim_max.item())
+    _ = hmr(x + 0.01)
+    sim2 = float(hmr.last_sim_max.item())
+    assert sim2 >= sim1

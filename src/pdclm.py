@@ -79,7 +79,13 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             rewards.append(reward)
-            wandb.log({"reward": reward, "loss": loss.item(), "epoch": epoch, "step": step})
+            hmr_metrics = {}
+            if hasattr(model, 'hmr'):
+                hmr_metrics = {
+                    "hmr/sim_max": float(model.hmr.last_sim_max.item()),
+                    "hmr/ssm_age_max": float(model.hmr.ssm_age.max().item())
+                }
+            wandb.log({"reward": reward, "loss": loss.item(), "epoch": epoch, "step": step, **hmr_metrics})
         avg_reward = sum(rewards) / max(len(rewards), 1)
         scheduler.step(avg_reward)
         print(f"Epoch {epoch} Avg Reward: {avg_reward:.4f}")
