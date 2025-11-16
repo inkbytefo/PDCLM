@@ -75,6 +75,46 @@ def measure_forward_latency(model: torch.nn.Module, text: str) -> float:
     return (time.time() - start) * 1000.0
 
 
+def parse_expected_answer(task: str):
+    t = task.strip()
+    if "What is" in t and "+" in t:
+        expr = t.split("is")[1].split("?")[0]
+        a, b = [int(x.strip()) for x in expr.split("+")]
+        return ("add", a + b)
+    if "What is" in t and "*" in t:
+        expr = t.split("is")[1].split("?")[0]
+        a, b = [int(x.strip()) for x in expr.split("*")]
+        return ("mul", a * b)
+    if "even" in t:
+        num = int(t.split("even?")[0].split()[-1])
+        return ("even", (num % 2 == 0))
+    if "Sort these numbers" in t:
+        part = t.split(":")[1]
+        arr = [int(x.strip()) for x in part.split(",")]
+        return ("sort", sorted(arr))
+    return (None, None)
+
+
+def compute_hallucination_penalty(task: str, answer: str | None) -> float:
+    try:
+        kind, expected = parse_expected_answer(task)
+        if kind is None or answer is None:
+            return 0.1
+        if kind in ("add", "mul"):
+            return 0.0 if str(expected) == str(int(answer)) else 0.1
+        if kind == "even":
+            return 0.0 if (answer.lower() in ("true", "false") and ((answer.lower() == "true") == expected)) else 0.1
+        if kind == "sort":
+            try:
+                parsed = [int(x.strip()) for x in answer.strip('[]').split(',') if x.strip()]
+            except Exception:
+                parsed = None
+            return 0.0 if parsed == expected else 0.1
+        return 0.05
+    except Exception:
+        return 0.1
+
+
 def calculate_entropy(logits: torch.Tensor) -> float:
     """
     Calculate entropy of model predictions.

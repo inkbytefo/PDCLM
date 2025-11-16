@@ -11,6 +11,7 @@ from src.model import PDCLMBase, pretrain_step as faz1_pretrain_step
 from src.reflection import ReflectivePDCLM
 from src.hcl import HCLAgent, CognitiveControlModule, task_generator, hcl_train_step
 from src.utils import measure_forward_latency
+from src.utils import compute_hallucination_penalty
 from src.utils import save_checkpoint
 
 
@@ -39,7 +40,8 @@ class PDCLM(ReflectivePDCLM):
         if "Final answer:" in final:
             ans = final.split("Final answer:")[1].strip()
         correctness = 1.0 if self._check_answer(task, ans) else 0.0
-        multi_reward = 0.25 * coherence + 0.5 * correctness + 0.25 * reflection_score
+        hallucination_penalty = compute_hallucination_penalty(task, ans)
+        multi_reward = 0.25 * coherence + 0.5 * correctness + 0.25 * reflection_score - 0.05 * hallucination_penalty
         return loss, multi_reward
 
     def full_forward(self, task: str):
