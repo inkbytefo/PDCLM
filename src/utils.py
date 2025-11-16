@@ -66,6 +66,10 @@ def measure_forward_latency(model: torch.nn.Module, text: str) -> float:
     Measure forward pass latency in milliseconds for a given text.
     """
     start = time.time()
+    min_len = getattr(getattr(model, 'pse', None), 'window_size', 32)
+    if len(text) < min_len:
+        repeat = (min_len // max(len(text), 1)) + 1
+        text = (text + " ") * repeat
     with torch.no_grad():
         _ = model(text)
     return (time.time() - start) * 1000.0
