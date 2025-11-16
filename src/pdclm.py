@@ -44,6 +44,15 @@ class PDCLM(ReflectivePDCLM):
         multi_reward = 0.25 * coherence + 0.5 * correctness + 0.25 * reflection_score - 0.05 * hallucination_penalty
         return loss, multi_reward
 
+    def evaluate_with_answer(self, task: str) -> Tuple[float, float, str | None]:
+        cot = self.proposer.generate_cot(task, max_steps=8)
+        loss, reward = self._evaluate_task(task)
+        final = cot[-1]
+        ans = None
+        if "Final answer:" in final:
+            ans = final.split("Final answer:")[1].strip()
+        return loss, reward, ans
+
     def full_forward(self, task: str):
         return self._evaluate_task(task)
 

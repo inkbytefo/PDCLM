@@ -6,3 +6,5 @@ scipy
 matplotlib
 wandb
 pytest
+fastapi
+uvicorn
