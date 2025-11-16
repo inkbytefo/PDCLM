@@ -54,13 +54,13 @@ class ReflectivePDCLM(PDCLMBase):
             a = inp.mean(dim=0).unsqueeze(0)
             b = pred.mean(dim=0).unsqueeze(0)
             cos_sim = F.cosine_similarity(a, b)
-            target_err = torch.clamp(0.1 * (1.0 - cos_sim), 0.0, 1.0).squeeze()
+            target_err = torch.clamp(0.05 * (1.0 - cos_sim), 0.0, 1.0).squeeze()
             pred_errors.append(target_err)
         pred_scores_t = torch.stack(pred_scores)
         pred_targets_t = torch.stack(pred_errors)
         refl_loss = F.mse_loss(pred_scores_t, pred_targets_t)
         task_loss = super().forward(self._pad_text(raw_text))
-        total = task_loss + self.reflection_loss_weight * refl_loss
+        total = task_loss + self.reflection_loss_weight * refl_loss + 0.2 * pred_scores_t.mean()
         return total, pred_scores_t.mean()
 
 
