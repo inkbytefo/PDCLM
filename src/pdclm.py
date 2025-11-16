@@ -34,31 +34,38 @@ class PDCLM(ReflectivePDCLM):
         coherence = self.ccm(cot_streams).item()
         loss, refl_loss, mean_logit, mean_target = self.reflective_forward(" ".join(cot), cot)
         reflection_score = 1.0 - float(mean_target.item())
-        correctness = 1.0 if self._check_answer(task) else 0.0
-        multi_reward = 0.4 * coherence + 0.3 * correctness + 0.3 * reflection_score
+        final = cot[-1]
+        ans = None
+        if "Final answer:" in final:
+            ans = final.split("Final answer:")[1].strip()
+        correctness = 1.0 if self._check_answer(task, ans) else 0.0
+        multi_reward = 0.25 * coherence + 0.5 * correctness + 0.25 * reflection_score
         return loss, multi_reward
 
     def full_forward(self, task: str):
         return self._evaluate_task(task)
 
-    def _check_answer(self, task: str) -> bool:
+    def _check_answer(self, task: str, answer: str | None) -> bool:
         try:
             t = task.strip()
+            if answer is None:
+                return False
             if "What is" in t and "+" in t:
                 expr = t.split("is")[1].split("?")[0]
                 a, b = [int(x.strip()) for x in expr.split("+")]
-                return (a + b) == (a + b)
+                return int(answer) == (a + b)
             if "What is" in t and "*" in t:
                 expr = t.split("is")[1].split("?")[0]
                 a, b = [int(x.strip()) for x in expr.split("*")]
-                return (a * b) == (a * b)
+                return int(answer) == (a * b)
             if "even" in t:
                 num = int(t.split("even?")[0].split()[-1])
-                return (num % 2 == 0) == (num % 2 == 0)
+                return (answer.lower() == "true") == (num % 2 == 0)
             if "Sort these numbers" in t:
                 part = t.split(":")[1]
                 arr = [int(x.strip()) for x in part.split(",")]
-                return sorted(arr) == sorted(arr)
+                parsed = [int(x.strip()) for x in answer.strip('[]').split(',')]
+                return parsed == sorted(arr)
             return False
         except Exception:
             return False
