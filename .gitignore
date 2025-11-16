@@ -25,7 +25,7 @@ wandb/
 .wandb/
 
 # Data files (too large)
-data/raw/*.txt
+# data/raw/*.txt  # Removed to allow tracking of sample data
 
 # Model checkpoints
 *.ckpt

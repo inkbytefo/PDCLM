@@ -2,6 +2,10 @@
 ## Modified: 2025-11-16
 
 import pytest
+import sys
+import os
+sys.path.append('..')
+
 import torch
 from src.model import PDCLMBase, pretrain_step, create_batches
 
