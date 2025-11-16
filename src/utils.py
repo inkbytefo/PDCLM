@@ -1,5 +1,5 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-16
+## Modified: 2025-11-17
 
 """
 Utility functions for PD-CLM project.
@@ -10,20 +10,19 @@ import numpy as np
 from typing import List, Dict, Any
 import matplotlib.pyplot as plt
 from scipy.special import softmax
+import time
+import os
 
 
 def load_data(file_path: str) -> Dict[str, Any]:
     """
-    Load data from file.
-    
-    Args:
-        file_path: Path to data file
-        
-    Returns:
-        Loaded data dictionary
+    Load raw text data and basic stats.
     """
-    # TODO: Implement specific data loading logic
-    pass
+    if not os.path.exists(file_path):
+        return {"text": "", "length": 0}
+    with open(file_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    return {"text": text, "length": len(text)}
 
 
 def preprocess_text(text: str) -> str:
@@ -40,6 +39,36 @@ def preprocess_text(text: str) -> str:
     text = text.strip()
     text = text.lower()
     return text
+
+
+def build_reasoning_tasks(n: int = 10) -> List[str]:
+    import random
+    tasks = []
+    for _ in range(n):
+        choice = random.choice(["add", "mul", "even", "sort"])
+        if choice == "add":
+            a, b = random.randint(1, 100), random.randint(1, 100)
+            tasks.append(f"What is {a} + {b}?")
+        elif choice == "mul":
+            a, b = random.randint(1, 50), random.randint(1, 50)
+            tasks.append(f"What is {a} * {b}?")
+        elif choice == "even":
+            a = random.randint(1, 100)
+            tasks.append(f"Is {a} even? Answer True/False.")
+        else:
+            arr = ', '.join(map(str, random.sample(range(1, 20), 5)))
+            tasks.append(f"Sort these numbers: {arr}")
+    return tasks
+
+
+def measure_forward_latency(model: torch.nn.Module, text: str) -> float:
+    """
+    Measure forward pass latency in milliseconds for a given text.
+    """
+    start = time.time()
+    with torch.no_grad():
+        _ = model(text)
+    return (time.time() - start) * 1000.0
 
 
 def calculate_entropy(logits: torch.Tensor) -> float:

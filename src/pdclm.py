@@ -10,6 +10,7 @@ import os
 from src.model import PDCLMBase, pretrain_step as faz1_pretrain_step
 from src.reflection import ReflectivePDCLM
 from src.hcl import HCLAgent, CognitiveControlModule, task_generator, hcl_train_step
+from src.utils import measure_forward_latency
 from src.utils import save_checkpoint
 
 
@@ -85,7 +86,8 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
                     "hmr/sim_max": float(model.hmr.last_sim_max.item()),
                     "hmr/ssm_age_max": float(model.hmr.ssm_age.max().item())
                 }
-            wandb.log({"reward": reward, "loss": loss.item(), "epoch": epoch, "step": step, **hmr_metrics})
+            latency_ms = measure_forward_latency(model, task)
+            wandb.log({"reward": reward, "loss": loss.item(), "epoch": epoch, "step": step, "latency_ms": latency_ms, **hmr_metrics})
         avg_reward = sum(rewards) / max(len(rewards), 1)
         scheduler.step(avg_reward)
         print(f"Epoch {epoch} Avg Reward: {avg_reward:.4f}")
