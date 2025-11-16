@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 from .pse import PatternStreamEncoder
+from .hmr import HierarchicalMemoryRouter
 
 class PDCLMBase(nn.Module):
     def __init__(self, embed_dim: int = 256, num_layers: int = 4, heads: int = 4, window_size: int = 512):
@@ -15,6 +16,7 @@ class PDCLMBase(nn.Module):
         
         # PSE as input encoder with adapted embed_dim
         self.pse = PatternStreamEncoder(embed_dim=embed_dim, window_size=window_size)
+        self.hmr = HierarchicalMemoryRouter(embed_dim=embed_dim)
         
         # Transformer decoder setup
         decoder_layer = nn.TransformerDecoderLayer(
@@ -47,7 +49,7 @@ class PDCLMBase(nn.Module):
         target_stream = stream[target_shift:]    # Shifted targets
         
         # Create memory for transformer (initially zeros, can be improved)
-        memory = torch.zeros_like(input_stream)
+        memory = self.hmr(input_stream)
         
         # Transformer decoder processing
         # memory: encoder outputs (for self-attention, we'll use input as memory too)
