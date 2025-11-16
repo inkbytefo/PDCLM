@@ -29,3 +29,14 @@ def test_hmr_integration_with_model():
     loss = model(test_text)
     assert not torch.isnan(loss)
     assert loss.item() >= 0
+
+
+def test_hmr_slot_update():
+    embed_dim = 256
+    hmr = HierarchicalMemoryRouter(embed_dim=embed_dim, decay=0.8)
+    input_stream = torch.randn(8, embed_dim)
+    before = hmr.ssm_slots.clone().detach()
+    _ = hmr(input_stream)
+    after = hmr.ssm_slots.clone().detach()
+    diff = (after - before).abs().sum().item()
+    assert diff > 0
