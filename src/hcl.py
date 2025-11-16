@@ -34,7 +34,7 @@ class HCLAgent:
         self.model = model
         self.ccm = ccm
 
-    def generate_cot(self, task: str, max_steps: int = 5) -> List[str]:
+    def generate_cot(self, task: str, max_steps: int = 8) -> List[str]:
         cot = []
         current = task
         for i in range(max_steps):
@@ -69,8 +69,13 @@ class HCLAgent:
 
 def task_generator() -> str:
     import random
-    a, b = random.randint(1, 100), random.randint(1, 100)
-    return f"What is {a} + {b}?"
+    tasks = [
+        f"What is {random.randint(1,100)} + {random.randint(1,100)}?",
+        f"What is {random.randint(1,50)} * {random.randint(1,50)}?",
+        f"Is {random.randint(1,100)} even? Answer True/False.",
+        f"Sort these numbers: {', '.join(map(str, random.sample(range(1,20), 5)))}"
+    ]
+    return random.choice(tasks)
 
 
 def parse_expected_answer(task: str) -> int:

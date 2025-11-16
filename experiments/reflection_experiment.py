@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.reflection import ReflectivePDCLM, reflective_train_step
-from src.hcl import HCLAgent, CognitiveControlModule
+from src.hcl import HCLAgent, CognitiveControlModule, task_generator
 
 
 def main():
@@ -17,24 +17,30 @@ def main():
     ccm = CognitiveControlModule()
     agent = HCLAgent(model, ccm)
     losses: list[float] = []
-    refls: list[float] = []
-    task = "What is 37 * 24?"
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
-    for _ in range(200):
-        loss, refl = reflective_train_step(model, agent, task, max_steps=6, optimizer=optimizer)
+    pred_errors: list[float] = []
+    target_errors: list[float] = []
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=50)
+    for _ in range(500):
+        t = task_generator()
+        loss, refl = reflective_train_step(model, agent, t, max_steps=8, optimizer=optimizer)
         losses.append(loss)
-        refls.append(refl)
+        pred_errors.append(torch.sigmoid(torch.tensor(refl)).item())
+        target_errors.append(refl)
+        scheduler.step(refl)
     fig, ax1 = plt.subplots()
     ax1.plot(losses, 'b-')
     ax2 = ax1.twinx()
-    ax2.plot(refls, 'r-')
-    plt.title("Faz-3 Reflective Loss (blue) & Reflection Error (red)")
-    plt.savefig("experiments/reflection_loss.png")
-    final_refl = refls[-1]
-    if final_refl < 0.25:
-        print("Faz-3 TAMAM, Final Alignment.")
+    ax2.plot(pred_errors, 'r-')
+    ax2.plot(target_errors, 'g-')
+    plt.title("Faz-3 Reflective Loss (blue), Pred Error (red), Target Error (green)")
+    plt.savefig("experiments/reflection_loss_improved.png")
+    last50 = target_errors[-50:]
+    avg_last50 = sum(last50) / len(last50)
+    if avg_last50 < 0.20:
+        print("Faz-3 TAMAM, PD-CLM Prototip Hazır.")
     else:
-        print("Reflection dim artır (512), veya CoT uzunluğu 6 yap.")
+        print("CoT çeşitliliği artır, dim=512 yap.")
 
 
 if __name__ == "__main__":
