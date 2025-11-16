@@ -30,7 +30,7 @@ class ReflectivePDCLM(PDCLMBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.reflection = ReflectionNetwork(dim=self.embed_dim)
-        self.reflection_loss_weight = 0.6
+        self.reflection_loss_weight = 1.0
 
     def _pad_text(self, text: str) -> str:
         min_len = getattr(self.pse, "window_size", 32)
@@ -54,11 +54,12 @@ class ReflectivePDCLM(PDCLMBase):
         return task_loss + self.reflection_loss_weight * refl_loss, refl_loss
 
 
-def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str, max_steps: int = 6):
+def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str, max_steps: int = 6, optimizer: torch.optim.Optimizer | None = None):
     model.train()
     cot = agent.generate_cot(task, max_steps=max_steps)
     loss, refl_loss = model.reflective_forward(" ".join(cot), cot)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
+    if optimizer is None:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     optimizer.zero_grad()
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

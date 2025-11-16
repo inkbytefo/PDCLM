@@ -19,8 +19,9 @@ def main():
     losses: list[float] = []
     refls: list[float] = []
     task = "What is 37 * 24?"
-    for _ in range(100):
-        loss, refl = reflective_train_step(model, agent, task, max_steps=6)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    for _ in range(200):
+        loss, refl = reflective_train_step(model, agent, task, max_steps=6, optimizer=optimizer)
         losses.append(loss)
         refls.append(refl)
     fig, ax1 = plt.subplots()
