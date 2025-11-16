@@ -74,11 +74,14 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
         for step in range(steps_per_epoch):
             task = task_generator()
             _ = hcl_train_step(model.proposer, model.critic, num_tasks=1)
-            loss, reward = model.full_forward(task)
+            loss, base_reward = model.full_forward(task)
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            latency_ms = measure_forward_latency(model, task)
+            lat_norm = min(latency_ms / 50.0, 1.0)
+            reward = max(0.0, base_reward - 0.05 * lat_norm)
             rewards.append(reward)
             hmr_metrics = {}
             if hasattr(model, 'hmr'):
@@ -86,8 +89,7 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
                     "hmr/sim_max": float(model.hmr.last_sim_max.item()),
                     "hmr/ssm_age_max": float(model.hmr.ssm_age.max().item())
                 }
-            latency_ms = measure_forward_latency(model, task)
-            wandb.log({"reward": reward, "loss": loss.item(), "epoch": epoch, "step": step, "latency_ms": latency_ms, **hmr_metrics})
+            wandb.log({"reward": reward, "reward_base": base_reward, "loss": loss.item(), "epoch": epoch, "step": step, "latency_ms": latency_ms, **hmr_metrics})
         avg_reward = sum(rewards) / max(len(rewards), 1)
         scheduler.step(avg_reward)
         print(f"Epoch {epoch} Avg Reward: {avg_reward:.4f}")
