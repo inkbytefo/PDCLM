@@ -1,0 +1,9 @@
+{
+  "final_train_loss": 0.0032441497314721346,
+  "final_val_loss": 0.0009232658776454628,
+  "min_train_loss": 0.002888872055336833,
+  "min_val_loss": 0.0005791748408228159,
+  "training_time": 20.312596,
+  "iterations": 500,
+  "decision": "Faz-1 TAMAM, Cognitive Loop'a ge\u00e7"
+}
