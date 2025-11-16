@@ -1,0 +1,49 @@
+# PDCLM Project - Git Ignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# PyTorch
+*.pth
+*.pt
+
+# WandB logs
+wandb/
+.wandb/
+
+# Data files (too large)
+data/raw/*.txt
+
+# Model checkpoints
+*.ckpt
+*.model
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

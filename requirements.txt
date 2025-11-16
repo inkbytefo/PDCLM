@@ -1,0 +1,8 @@
+torch>=2.5.0
+transformers>=4.45.0
+datasets
+numpy
+scipy
+matplotlib
+wandb
+pytest
