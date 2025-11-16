@@ -65,7 +65,7 @@ def test_entropy_optimization_vs_baseline():
     baseline_result = compute_entropy_profile_unoptimized(test_seq, window_size, stride, vocab_size)
     baseline_time = time.time() - start
     
-    speedup = baseline_time / optimized_time
+    speedup = baseline_time / optimized_time if optimized_time > 1e-9 else float('inf')
     result_equivalent = torch.allclose(optimized_result, baseline_result, atol=1e-6)
     
     print(f"Optimized: {optimized_time:.4f}s")
