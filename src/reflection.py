@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import List
 from src.model import PDCLMBase
 from src.hcl import HCLAgent, CognitiveControlModule
@@ -45,13 +46,22 @@ class ReflectivePDCLM(PDCLMBase):
             s_padded = self._pad_text(s)
             streams.append(self.pse(s_padded))
         pred_stream = self.pse(self._pad_text(cot_steps[-1]))
-        reflection_losses = []
+        pred_errors = []
+        pred_scores = []
         for inp, pred in zip(streams, streams[1:] + [pred_stream]):
-            refl_score = self.reflection(inp, pred)
-            reflection_losses.append(refl_score)
-        refl_loss = torch.stack(reflection_losses).mean()
+            score = self.reflection(inp, pred).squeeze()
+            pred_scores.append(score)
+            a = inp.mean(dim=0).unsqueeze(0)
+            b = pred.mean(dim=0).unsqueeze(0)
+            cos_sim = F.cosine_similarity(a, b)
+            target_err = torch.clamp(1.0 - cos_sim, 0.0, 1.0).squeeze()
+            pred_errors.append(target_err)
+        pred_scores_t = torch.stack(pred_scores)
+        pred_targets_t = torch.stack(pred_errors)
+        refl_loss = F.mse_loss(pred_scores_t, pred_targets_t)
         task_loss = super().forward(self._pad_text(raw_text))
-        return task_loss + self.reflection_loss_weight * refl_loss, refl_loss
+        total = task_loss + self.reflection_loss_weight * refl_loss
+        return total, pred_scores_t.mean()
 
 
 def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str, max_steps: int = 6, optimizer: torch.optim.Optimizer | None = None):
