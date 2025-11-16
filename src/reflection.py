@@ -54,7 +54,7 @@ class ReflectivePDCLM(PDCLMBase):
             a = inp.mean(dim=0).unsqueeze(0)
             b = pred.mean(dim=0).unsqueeze(0)
             cos_sim = F.cosine_similarity(a, b)
-            target_err = torch.clamp(1.0 - cos_sim, 0.0, 1.0).squeeze()
+            target_err = torch.clamp(0.1 * (1.0 - cos_sim), 0.0, 1.0).squeeze()
             pred_errors.append(target_err)
         pred_scores_t = torch.stack(pred_scores)
         pred_targets_t = torch.stack(pred_errors)
