@@ -40,3 +40,16 @@ def test_hmr_slot_update():
     after = hmr.ssm_slots.clone().detach()
     diff = (after - before).abs().sum().item()
     assert diff > 0
+
+
+def test_hmr_eviction_policy():
+    embed_dim = 256
+    hmr = HierarchicalMemoryRouter(embed_dim=embed_dim, decay=0.9, age_limit=1)
+    x1 = torch.randn(8, embed_dim)
+    _ = hmr(x1)
+    before = hmr.ssm_slots.clone().detach()
+    x2 = torch.randn(8, embed_dim)
+    _ = hmr(x2)
+    after = hmr.ssm_slots.clone().detach()
+    change = (after - before).abs().sum().item()
+    assert change > 0
