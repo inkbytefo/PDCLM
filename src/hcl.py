@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 from typing import List
+import re
 from src.model import PDCLMBase
 
 
@@ -43,8 +44,8 @@ class HCLAgent:
                 repeat = (min_len // max(len(txt), 1)) + 1
                 txt = (txt + " ") * repeat
             return txt
-        def parse_and_reason(t: str, step_idx: int) -> str:
-            s = t.lower()
+        def parse_and_reason(base_t: str, step_idx: int) -> str:
+            s = base_t.lower()
             if "what is" in s and "+" in s:
                 expr = s.split("is")[1].split("?")[0]
                 a, b = [int(x.strip()) for x in expr.split("+")]
@@ -66,8 +67,8 @@ class HCLAgent:
                     return f"Check parity of {num}"
                 return f"Final answer: {'True' if num % 2 == 0 else 'False'}"
             if "sort these numbers" in s:
-                part = s.split(":")[1]
-                arr = [int(x.strip()) for x in part.split(",")]
+                nums = re.findall(r"\d+", s)
+                arr = [int(x) for x in nums]
                 if step_idx < max_steps - 1:
                     return f"Apply sort to {arr}"
                 return f"Final answer: {sorted(arr)}"
@@ -77,7 +78,7 @@ class HCLAgent:
                 text = add_padding(current)
                 stream = self.model.pse(text)
                 _ = self.model.transformer(stream.unsqueeze(0), torch.zeros_like(stream).unsqueeze(0))
-            next_step = parse_and_reason(current, i)
+            next_step = parse_and_reason(task, i)
             current = current + " " + next_step
             cot.append(current)
         return cot
