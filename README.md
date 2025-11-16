@@ -1,104 +1,44 @@
-# PDCLM - Pattern-Driven Cognitive Language Model
+## Developer: inkbytefo
+## Modified: 2025-11-17
 
-## Proje Hakkında
+# PD‑CLM — Pattern‑Driven Cognitive Language Model
 
-PDCLM, geleneksel tokenizer yaklaşımının ötesinde, **Pattern Stream Encoder (PSE)** tabanlı yeni bir LLM mimarisi sunar.
+PD‑CLM is a multi‑phase system that replaces classic tokenization with a Pattern Stream Encoder (PSE), builds reasoning with a High‑Level Cognitive Loop (HCL), optimizes consistency via a Reflection Network (R‑Layer), and routes long‑context memory using a Hierarchical Memory Router (HMR). It logs multi‑reward metrics to W&B and exposes a REST API for deployment.
 
-## Faz-1: Continuous Stream Pretraining ✅
+## Highlights
+- PSE: Continuous stream encoding with entropy modulation (tokenizer‑free)
+- HCL: Proposer/critic agents, CoT generation, CCM coherence
+- Reflection: BCEWithLogits with cosine target error
+- HMR: SSM/MSM slots (EMA), per‑position routing, LSM KV‑store retrieval
+- Multi‑Reward: coherence + correctness + reflection − efficiency/hallucination
+- REST server and TorchScript export
 
-- **PSE Performance**: 0.28s / 50k char (optimized)
-- **Model**: PDCLMBase (4 layer, 256 dim, 4 head)
-- **Parameter Count**: 37,899,777
-- **Test Suite**: 6/6 pytest PASS ✅
-- **Convergence**: Functional (GPU'da test edilmeli)
+## Install & Test
+- `pip install -r requirements.txt`
+- `pytest -q` (all tests passing)
 
-### Model Architecture
-```
-PDCLMBase(
-  embed_dim=256,
-  num_layers=4, 
-  heads=4,
-  window_size=512
-)
-```
+## Final Alignment (short)
+- `python experiments/final_alignment.py --embed_dim 512 --epochs 1 --steps 30`
+- Inference check: `python experiments/infer_pdclm.py --embed_dim 512 --ckpt checkpoints/pdclm_final.pt --samples 50`
 
-### Test Results
-```bash
-pytest tests/test_model.py -v
-# 6 passed in 25.84s ✅
-```
+## Experiments
+- Reflection (long CoT): `python experiments/reflection_experiment.py` → `experiments/reflection_longcot.png`
+- REST server: `python experiments/rest_server.py`
+  - `curl -X POST http://localhost:8000/evaluate -H "Content-Type: application/json" -d "{\"task\":\"What is 7 + 9?\"}"`
+- TorchScript export: `python experiments/export_model.py`
 
-## Google Colab'da Training
+## Code Map
+- `src/pse.py` — PatternStreamEncoder
+- `src/model.py` — PDCLMBase (transformer decoder)
+- `src/hcl.py` — HCLAgent, CognitiveControlModule (CoT, coherence)
+- `src/reflection.py` — ReflectionNetwork, ReflectivePDCLM
+- `src/hmr.py` — HierarchicalMemoryRouter (EMA, routing, LSM)
+- `src/pdclm.py` — Unified model, training loop, W&B
+- `src/utils.py` — Data, latency, expected answers, hallucination penalty
 
-1. Repository'yi clone edin:
-```bash
-!git clone https://github.com/inkbytefo/PDCLM.git
-%cd PDCLM
-```
+## W&B Logging
+- `reward`, `reward_base`, `loss`, `latency_ms`, `hmr/sim_max`, `hmr/ssm_age_max`
+- Note: project views may require login
 
-2. Notebook'u çalıştırın:
-```bash
-# experiments/train_test_updated.ipynb
-# GPU runtime ile 500 iterasyon training
-```
-
-3. Quick Test (küçük model):
-```bash
-python experiments/quick_test.py
-```
-
-## Dosya Yapısı
-```
-pdclm_project/
-├── src/
-│   ├── model.py          # PDCLMBase model
-│   ├── pse.py           # Pattern Stream Encoder
-│   ├── utils.py         # Training utilities
-│   └── entropy_utils.py # Entropy analysis
-├── tests/
-│   ├── test_model.py    # Model tests (6 PASS)
-│   └── test_pse.py      # PSE tests
-├── experiments/
-│   ├── train_test_updated.ipynb    # 500 iter training
-│   ├── quick_test.py               # Quick validation
-│   └── pse_optimized_test.ipynb    # PSE optimization
-├── data/
-│   └── raw/
-│       └── wikitext_sample.txt     # Training data (5.3M chars)
-├── LICENSE                     # Özel kullanım lisansı
-└── requirements.txt                # Dependencies
-```
-
-## Faz-2: Cognitive Loop (Next)
-- Dynamic pattern adjustment
-- Context-aware memory
-- Self-optimization loop
-
-## Performans Hedefleri
-
-| Metric | Target | Current |
-|--------|---------|---------|
-| Final Loss | < 0.5 | TBD (GPU) |
-| Training Speed | 100 iter/hr | CPU: 25s/iter |
-| Memory Usage | < 8GB | ~2GB |
-
-## Setup
-```bash
-pip install -r requirements.txt
-pytest tests/                    # Run tests
-python experiments/quick_test.py # Quick validation
-```
-
-## Lisans
-
-Bu proje **Özel Kullanım Lisansı** altında yayınlanmıştır. Detaylar için `LICENSE` dosyasına bakınız.
-
-## Author
-
-**Tevfik İşkın**  
-Türkiye Cumhuriyeti  
-Pattern-Driven Language Model Research
-
----
-
-> **Not:** Bu proje Tevfik İşkın'ın kişisel araştırmasıdır ve özel kullanım lisansı ile korunmaktadır.
+## Roadmap
+See `ROADMAP.md` for a production training plan (data pipeline, distributed training, evaluation, deployment).
