@@ -19,5 +19,6 @@ def test_reflection_score():
 def test_reflective_loss():
     model = ReflectivePDCLM()
     cot = ["a" * 1000] * 5
-    loss, refl = model.reflective_forward("a" * 5000, cot)
+    loss, refl, mean_logit, mean_target = model.reflective_forward("a" * 5000, cot)
     assert loss.item() > 0
+    assert 0.0 <= mean_target.item() <= 1.0

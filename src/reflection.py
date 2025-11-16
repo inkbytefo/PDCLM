@@ -61,17 +61,19 @@ class ReflectivePDCLM(PDCLMBase):
         refl_loss = self.bce_loss(refl_logits, targets)
         task_loss = super().forward(self._pad_text(raw_text))
         total = task_loss + self.reflection_loss_weight * refl_loss
-        return total, refl_loss
+        mean_logit = refl_logits.mean()
+        mean_target = targets.mean()
+        return total, refl_loss, mean_logit, mean_target
 
 
 def reflective_train_step(model: ReflectivePDCLM, agent: HCLAgent, task: str, max_steps: int = 8, optimizer: torch.optim.Optimizer | None = None):
     model.train()
     cot = agent.generate_cot(task, max_steps=max_steps)
-    loss, refl_loss = model.reflective_forward(" ".join(cot), cot)
+    loss, refl_loss, mean_logit, mean_target = model.reflective_forward(" ".join(cot), cot)
     if optimizer is None:
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     optimizer.zero_grad()
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
-    return loss.item(), refl_loss.item()
+    return loss.item(), refl_loss.item(), float(mean_logit.item()), float(mean_target.item())
