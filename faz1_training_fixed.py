@@ -8,6 +8,7 @@ T4 GPU ile optimized training script
 
 import sys
 import os
+import argparse
 sys.path.append('.')
 
 import torch
@@ -17,6 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+import json
+import wandb
 
 # Import our model and utilities
 from src.model import PDCLMBase, pretrain_step, create_batches
@@ -32,6 +35,21 @@ def load_text_file(file_path):
         return None
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-path', type=str, default='data/raw/wikitext_sample.txt')
+    parser.add_argument('--iterations', type=int, default=500)
+    parser.add_argument('--batch-size', type=int, default=10000)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--log-interval', type=int, default=50)
+    parser.add_argument('--val-interval', type=int, default=50)
+    parser.add_argument('--save-every', type=int, default=0)
+    parser.add_argument('--checkpoint-dir', type=str, default='checkpoints')
+    parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--wandb', action='store_true')
+    parser.add_argument('--wandb-project', type=str, default='pdclm')
+    parser.add_argument('--wandb-run', type=str, default='faz1')
+    args = parser.parse_args()
+
     print("🚀 PDCLM Faz-1 Training Script (500 iterations) - FIXED")
     print("="*60)
     
@@ -44,9 +62,19 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"🔧 Device: {device}")
     print(f"🔥 GPU: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
+    if not args.wandb:
+        os.environ['WANDB_DISABLED'] = 'true'
+    else:
+        wandb.init(project=args.wandb_project, name=args.wandb_run, config={
+            'iterations': args.iterations,
+            'batch_size': args.batch_size,
+            'lr': args.lr,
+            'log_interval': args.log_interval,
+            'val_interval': args.val_interval,
+            'data_path': args.data_path
+        })
     
-    # Load data
-    data_path = "data/raw/wikitext_sample.txt"
+    data_path = args.data_path
     print(f"\n📖 Loading data from: {data_path}")
     
     raw_text = load_text_file(data_path)
@@ -76,15 +104,13 @@ def main():
     print(f"✅ Model created")
     print(f"📊 Parameters: {model.count_parameters():,}")
     
-    # Initialize optimizer
-    learning_rate = 1e-4
+    learning_rate = args.lr
     optimizer = AdamW(model.parameters(), lr=learning_rate)
     
-    # Training parameters
-    batch_size = 10000  # characters per batch
-    num_iterations = 500
-    log_interval = 50
-    val_interval = 50
+    batch_size = args.batch_size
+    num_iterations = args.iterations
+    log_interval = args.log_interval
+    val_interval = args.val_interval
     
     print(f"\n🎯 Training configuration:")
     print(f"  - Iterations: {num_iterations}")
@@ -99,7 +125,7 @@ def main():
     print(f"✅ Created {len(train_batches)} training batches")
     
     # Training loop
-    print(f"\n🚀 Starting 500-iteration training...")
+    print(f"\n🚀 Starting {num_iterations}-iteration training...")
     print("="*60)
     
     train_losses = []
@@ -107,7 +133,17 @@ def main():
     start_time = datetime.now()
     
     model.train()
-    for iteration in range(num_iterations):
+    ckpt_dir = Path(args.checkpoint_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    start_iter = 0
+    if args.resume:
+        ckpt_path = ckpt_dir / 'faz1_last.pt'
+        if ckpt_path.exists():
+            state = torch.load(str(ckpt_path), map_location=device)
+            (model_wrapped.module if isinstance(model_wrapped, DDP) else model).load_state_dict(state['model'])
+            optimizer.load_state_dict(state['optimizer'])
+            start_iter = int(state.get('iteration', 0))
+    for iteration in range(start_iter, num_iterations):
         # Select batch (cycle through available batches)
         batch_text = train_batches[iteration % len(train_batches)]
         
@@ -120,14 +156,17 @@ def main():
             if iteration % log_interval == 0 and rank == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
                 print(f"Iteration {iteration:3d}/{num_iterations} | Train Loss: {loss:.6f} | Time: {elapsed:.1f}s")
+                if args.wandb:
+                    wandb.log({'train_loss': loss, 'iter': iteration, 'time_s': elapsed})
             
-            # Validation
             if iteration % val_interval == 0 and rank == 0:
                 model.eval()
                 with torch.no_grad():
                     val_loss = model(val_text)
                     val_losses.append(val_loss.item())
                     print(f"           | Val Loss:   {val_loss.item():.6f}")
+                    if args.wandb:
+                        wandb.log({'val_loss': val_loss.item(), 'iter': iteration})
                 model.train()
             
             # Check for NaN
@@ -135,6 +174,13 @@ def main():
                 print(f"❌ NaN loss detected at iteration {iteration}")
                 break
                 
+            if args.save_every and rank == 0 and iteration % args.save_every == 0:
+                state = {
+                    'model': (model_wrapped.module if isinstance(model_wrapped, DDP) else model).state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'iteration': iteration
+                }
+                torch.save(state, str(ckpt_dir / 'faz1_last.pt'))
         except Exception as e:
             print(f"❌ Error at iteration {iteration}: {str(e)}")
             break
@@ -253,7 +299,6 @@ def main():
     if rank == 0:
         print(f"\n🏆 DECISION: {decision}")
     
-    # Save results
     results = {
         'final_train_loss': final_train_loss,
         'final_val_loss': final_val_loss,
@@ -264,11 +309,17 @@ def main():
         'decision': decision
     }
     
-    import json
     if rank == 0:
         os.makedirs('experiments', exist_ok=True)
         with open('experiments/faz1_results.json', 'w') as f:
             json.dump(results, f, indent=2)
+        if args.save_every:
+            state = {
+                'model': (model_wrapped.module if isinstance(model_wrapped, DDP) else model).state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'iteration': num_iterations
+            }
+            torch.save(state, str(ckpt_dir / 'faz1_last.pt'))
         
         print(f"\n💾 Results saved to experiments/faz1_results.json")
         print(f"🎉 PDCLM Faz-1 training completed!")
