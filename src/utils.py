@@ -13,6 +13,7 @@ import json
 from scipy.special import softmax
 import time
 import os
+import re
 
 
 def load_data(file_path: str) -> Dict[str, Any]:
@@ -268,3 +269,49 @@ def build_tool_augmented_sft_dataset(num_samples: int, agent, tools) -> List[Dic
         )
         samples.append({"input": task, "target": target})
     return samples
+
+
+def _extract_number(text: str) -> int | None:
+    nums = re.findall(r"[-+]?\d+", text)
+    if not nums:
+        return None
+    try:
+        return int(nums[-1])
+    except Exception:
+        return None
+
+
+def _parse_gsm8k_answer(ans: str) -> int | None:
+    m = re.findall(r"####\s*([-+]?\d+)", ans)
+    if m:
+        try:
+            return int(m[-1])
+        except Exception:
+            return None
+    return _extract_number(ans)
+
+
+def evaluate_gsm8k(model, split: str = "test", sample_size: int = 100, max_new_bytes: int = 128) -> Dict[str, Any]:
+    from datasets import load_dataset
+    ds = load_dataset("gsm8k", "main", split=split)
+    import random
+    idxs = list(range(len(ds)))
+    random.shuffle(idxs)
+    idxs = idxs[:min(sample_size, len(ds))]
+    correct = 0
+    results = []
+    for i in idxs:
+        q = ds[i]["question"].strip()
+        gt = _parse_gsm8k_answer(ds[i]["answer"])  # type: ignore
+        prompt = q + "\nStep 1: "
+        gen = model.generate_text(prompt, max_new_bytes=max_new_bytes)
+        pred = None
+        if "Final answer:" in gen:
+            pred = _extract_number(gen.split("Final answer:")[-1])
+        if pred is None:
+            pred = _extract_number(gen)
+        ok = (pred is not None and gt is not None and int(pred) == int(gt))
+        correct += int(bool(ok))
+        results.append({"question": q, "pred": pred, "gt": gt, "ok": bool(ok)})
+    acc = correct / max(len(idxs), 1)
+    return {"split": split, "sample_size": len(idxs), "accuracy": acc, "results": results}

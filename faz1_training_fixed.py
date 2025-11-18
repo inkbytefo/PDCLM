@@ -58,7 +58,7 @@ def main():
     rank = int(os.environ.get('RANK', '0'))
     ddp = world > 1
     if ddp and not dist.is_initialized():
-        dist.init_process_group(backend='gloo')
+        dist.init_process_group(backend=('nccl' if torch.cuda.is_available() else 'gloo'))
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"🔧 Device: {device}")
     print(f"🔥 GPU: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")

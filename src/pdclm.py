@@ -125,7 +125,7 @@ def instruction_sft_train(model: PDCLM, num_samples: int = 1000, epochs: int = 1
     world = int(os.environ.get("WORLD_SIZE", "1"))
     ddp = world > 1
     if ddp and not dist.is_initialized():
-        dist.init_process_group(backend="gloo")
+        dist.init_process_group(backend=("nccl" if torch.cuda.is_available() else "gloo"))
     if rank == 0:
         wandb.init(project="pdclm-sft")
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -198,7 +198,7 @@ def ppo_train(model: PDCLM, epochs: int = 1, tasks_per_epoch: int = 10, lr: floa
     world = int(os.environ.get("WORLD_SIZE", "1"))
     ddp = world > 1
     if ddp and not dist.is_initialized():
-        dist.init_process_group(backend="gloo")
+        dist.init_process_group(backend=("nccl" if torch.cuda.is_available() else "gloo"))
     if rank == 0:
         wandb.init(project="pdclm-ppo")
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)

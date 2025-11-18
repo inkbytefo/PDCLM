@@ -1,9 +1,9 @@
 {
-  "final_train_loss": 0.0032441497314721346,
-  "final_val_loss": 0.0009232658776454628,
-  "min_train_loss": 0.002888872055336833,
-  "min_val_loss": 0.0005791748408228159,
-  "training_time": 20.312596,
+  "final_train_loss": 2.999974250793457,
+  "final_val_loss": 3.0022730827331543,
+  "min_train_loss": 2.48283314704895,
+  "min_val_loss": 3.0022730827331543,
+  "training_time": 23.328917,
   "iterations": 500,
-  "decision": "Faz-1 TAMAM, Cognitive Loop'a ge\u00e7"
+  "decision": "PSE output variance art\u0131r (scale=5.0) veya data \u00e7e\u015fitlendir"
 }

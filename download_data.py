@@ -67,6 +67,7 @@ def main():
     parser.add_argument("--build_index", type=str, default="true")
     parser.add_argument("--chunk_size", type=int, default=1000)
     parser.add_argument("--index_dir", type=str, default="data/index")
+    parser.add_argument("--embed_dim", type=int, default=512)
     args = parser.parse_args()
 
     os.makedirs("data/raw", exist_ok=True)
@@ -84,6 +85,16 @@ def main():
         out_txt = f"data/raw/c4_{args.split}.txt" if full else "data/raw/c4_sample.txt"
         write_text(out_txt, ds, "text")
         src_path = out_txt
+    elif ds_name == "pile":
+        ds = load_dataset("EleutherAI/pile", split=f"{args.split}[:{pct}%]")
+        out_txt = f"data/raw/pile_{args.split}.txt" if full else "data/raw/pile_sample.txt"
+        write_text(out_txt, ds, "text")
+        src_path = out_txt
+    elif ds_name == "wikipedia":
+        ds = load_dataset("wikipedia", "20220301.en", split=f"{args.split}[:{pct}%]")
+        out_txt = f"data/raw/wikipedia_{args.split}.txt" if full else "data/raw/wikipedia_sample.txt"
+        write_text(out_txt, ds, "text")
+        src_path = out_txt
     else:
         raise SystemExit(1)
 
@@ -91,8 +102,8 @@ def main():
         txt = read_text(src_path)
         chunks = chunk_text(txt, args.chunk_size)
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        index, Xn = build_faiss_index(chunks, embed_dim=512, device=device)
-        save_index(index, args.index_dir, chunks, embed_dim=512)
+        index, Xn = build_faiss_index(chunks, embed_dim=args.embed_dim, device=device)
+        save_index(index, args.index_dir, chunks, embed_dim=args.embed_dim)
 
 if __name__ == "__main__":
     main()
