@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--log-interval', type=int, default=50)
     parser.add_argument('--val-interval', type=int, default=50)
+    parser.add_argument('--val-chars', type=int, default=10000)
     parser.add_argument('--save-every', type=int, default=0)
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints')
     parser.add_argument('--resume', action='store_true')
@@ -244,7 +245,9 @@ def main():
                 model.eval()
                 with torch.no_grad():
                     target_model = (model_wrapped.module if isinstance(model_wrapped, DDP) else model_wrapped)
-                    val_loss = target_model(val_text)
+                    vlen = max(args.window_size, min(args.val_chars, len(val_text)))
+                    val_chunk = val_text[-vlen:]
+                    val_loss = target_model(val_chunk)
                     val_losses.append(val_loss.item())
                     print(f"           | Val Loss:   {val_loss.item():.6f}")
                     if args.wandb and os.environ.get('WANDB_DISABLED') != 'true':
