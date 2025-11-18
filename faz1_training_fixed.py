@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+## Developer: inkbytefo
+## Modified: 2025-11-18
 """
 PDCLM Faz-1 Training Script (500 iterations) - FIXED VERSION
 T4 GPU ile optimized training script
@@ -18,6 +20,8 @@ from datetime import datetime
 
 # Import our model and utilities
 from src.model import PDCLMBase, pretrain_step, create_batches
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 def load_text_file(file_path):
     """Simple text file loader"""
@@ -32,6 +36,11 @@ def main():
     print("="*60)
     
     # Setup
+    world = int(os.environ.get('WORLD_SIZE', '1'))
+    rank = int(os.environ.get('RANK', '0'))
+    ddp = world > 1
+    if ddp and not dist.is_initialized():
+        dist.init_process_group(backend='gloo')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"🔧 Device: {device}")
     print(f"🔥 GPU: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
@@ -62,6 +71,7 @@ def main():
     print(f"\n🤖 Initializing PDCLMBase model...")
     model = PDCLMBase(embed_dim=256, num_layers=4, heads=4, window_size=512)
     model = model.to(device)
+    model_wrapped = DDP(model) if ddp else model
     
     print(f"✅ Model created")
     print(f"📊 Parameters: {model.count_parameters():,}")
@@ -103,16 +113,16 @@ def main():
         
         # Training step
         try:
-            loss = pretrain_step(model, batch_text, optimizer, device)
+            loss = pretrain_step(model_wrapped, batch_text, optimizer, device)
             train_losses.append(loss)
             
             # Logging
-            if iteration % log_interval == 0:
+            if iteration % log_interval == 0 and rank == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
                 print(f"Iteration {iteration:3d}/{num_iterations} | Train Loss: {loss:.6f} | Time: {elapsed:.1f}s")
             
             # Validation
-            if iteration % val_interval == 0:
+            if iteration % val_interval == 0 and rank == 0:
                 model.eval()
                 with torch.no_grad():
                     val_loss = model(val_text)
@@ -131,19 +141,20 @@ def main():
     
     # Training completed
     total_time = (datetime.now() - start_time).total_seconds()
-    print("="*60)
-    print(f"✅ Training completed!")
-    print(f"📊 Total time: {total_time:.1f}s ({total_time/60:.1f} minutes)")
-    print(f"📈 Training iterations: {len(train_losses)}")
-    print(f"🔍 Validation checks: {len(val_losses)}")
+    if rank == 0:
+        print("="*60)
+        print(f"✅ Training completed!")
+        print(f"📊 Total time: {total_time:.1f}s ({total_time/60:.1f} minutes)")
+        print(f"📈 Training iterations: {len(train_losses)}")
+        print(f"🔍 Validation checks: {len(val_losses)}")
     
-    if train_losses:
+    if train_losses and rank == 0:
         final_train_loss = train_losses[-1]
         min_train_loss = min(train_losses)
         print(f"📈 Final train loss: {final_train_loss:.6f}")
         print(f"📉 Best train loss: {min_train_loss:.6f}")
     
-    if val_losses:
+    if val_losses and rank == 0:
         final_val_loss = val_losses[-1]
         min_val_loss = min(val_losses)
         print(f"🔍 Final val loss: {final_val_loss:.6f}")
@@ -158,16 +169,17 @@ def main():
     # Loss visualization
     print(f"\n📊 Creating loss plot...")
     
-    plt.figure(figsize=(14, 8))
+    if rank == 0:
+        plt.figure(figsize=(14, 8))
     
     # Plot training losses
-    plt.subplot(2, 1, 1)
+        plt.subplot(2, 1, 1)
     plt.plot(train_losses, 'b-', linewidth=2, label='Training Loss')
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss')
-    plt.title('Faz-1 Next-Pattern Prediction Loss')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
+        plt.xlabel('Iteration')
+        plt.ylabel('Loss')
+        plt.title('Faz-1 Next-Pattern Prediction Loss')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
     
     # Add loss statistics
     if train_losses:
@@ -180,14 +192,14 @@ def main():
         plt.legend()
     
     # Plot validation losses
-    plt.subplot(2, 1, 2)
-    val_iters = list(range(0, len(train_losses), val_interval))[:len(val_losses)]
-    plt.plot(val_iters, val_losses, 'r-', linewidth=2, label='Validation Loss')
-    plt.xlabel('Iteration')
-    plt.ylabel('Validation Loss')
-    plt.title('Faz-1 Validation Loss')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
+        plt.subplot(2, 1, 2)
+        val_iters = list(range(0, len(train_losses), val_interval))[:len(val_losses)]
+        plt.plot(val_iters, val_losses, 'r-', linewidth=2, label='Validation Loss')
+        plt.xlabel('Iteration')
+        plt.ylabel('Validation Loss')
+        plt.title('Faz-1 Validation Loss')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
     
     if val_losses:
         final_val = val_losses[-1]
@@ -198,31 +210,35 @@ def main():
                  bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         plt.legend()
     
-    plt.tight_layout()
+        plt.tight_layout()
     
     # Save plot
-    plot_path = "experiments/pretrain_loss.png"
-    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    print(f"💾 Loss plot saved: {plot_path}")
+    if rank == 0:
+        plot_path = "experiments/pretrain_loss.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"💾 Loss plot saved: {plot_path}")
     
     # plt.show()  # Comment out for headless operation
     
     # Final assessment
-    print(f"\n" + "="*60)
-    print(f"🏁 FAZ-1 TRAINING ASSESSMENT")
-    print(f"="*60)
+    if rank == 0:
+        print(f"\n" + "="*60)
+        print(f"🏁 FAZ-1 TRAINING ASSESSMENT")
+        print(f"="*60)
     
     final_train_loss = train_losses[-1] if train_losses else float('inf')
     final_val_loss = val_losses[-1] if val_losses else float('inf')
     
-    print(f"📊 Results:")
-    print(f"  - Final training loss: {final_train_loss:.6f}")
-    print(f"  - Final validation loss: {final_val_loss:.6f}")
-    print(f"  - Training time: {total_time:.1f}s")
-    print(f"  - Iterations completed: {len(train_losses)}/500")
+    if rank == 0:
+        print(f"📊 Results:")
+        print(f"  - Final training loss: {final_train_loss:.6f}")
+        print(f"  - Final validation loss: {final_val_loss:.6f}")
+        print(f"  - Training time: {total_time:.1f}s")
+        print(f"  - Iterations completed: {len(train_losses)}/500")
     
     # Target evaluation
-    print(f"\n🎯 Target Evaluation:")
+    if rank == 0:
+        print(f"\n🎯 Target Evaluation:")
     
     if final_train_loss < 0.7:
         print(f"  ✅ TRAIN LOSS < 0.7: SUCCESS")
@@ -234,7 +250,8 @@ def main():
         print(f"  ⚠️ TRAIN LOSS between 0.7-1.0: MODERATE")
         decision = "Faz-1 kabul edilebilir, optimize edilebilir"
     
-    print(f"\n🏆 DECISION: {decision}")
+    if rank == 0:
+        print(f"\n🏆 DECISION: {decision}")
     
     # Save results
     results = {
@@ -248,12 +265,13 @@ def main():
     }
     
     import json
-    os.makedirs('experiments', exist_ok=True)
-    with open('experiments/faz1_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"\n💾 Results saved to experiments/faz1_results.json")
-    print(f"🎉 PDCLM Faz-1 training completed!")
+    if rank == 0:
+        os.makedirs('experiments', exist_ok=True)
+        with open('experiments/faz1_results.json', 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        print(f"\n💾 Results saved to experiments/faz1_results.json")
+        print(f"🎉 PDCLM Faz-1 training completed!")
     
     return final_train_loss
 

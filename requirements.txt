@@ -8,3 +8,4 @@ wandb
 pytest
 fastapi
 uvicorn
+faiss-cpu

@@ -1,11 +1,12 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-17
+## Modified: 2025-11-18
 
 import torch
 import torch.nn as nn
 from typing import List
 import re
 from src.model import PDCLMBase
+from src.tools import ToolExecutor
 
 
 class CognitiveControlModule(nn.Module):
@@ -36,6 +37,36 @@ class HCLAgent:
         self.ccm = ccm
 
     def generate_cot(self, task: str, max_steps: int = 8) -> List[str]:
+        cot = []
+        current = task
+        for i in range(max_steps):
+            with torch.no_grad():
+                prompt = current + f"\nStep {i+1}: "
+                text = self.model.generate_text(prompt, max_new_bytes=64)
+            current = text
+            cot.append(current)
+            if "Final answer:" in current:
+                break
+        return cot
+
+    def generate_cot_with_tools(self, task: str, tools: ToolExecutor, max_steps: int = 8) -> List[str]:
+        cot = []
+        current = task
+        for i in range(max_steps):
+            if "[TOOL_CALL:" in current:
+                result = tools.run_call(current)
+                if result:
+                    current = current + f"\n[TOOL_RESULT: \"{result}\"]"
+            with torch.no_grad():
+                prompt = current + f"\nStep {i+1}: "
+                text = self.model.generate_text(prompt, max_new_bytes=64)
+            current = text
+            cot.append(current)
+            if "Final answer:" in current:
+                break
+        return cot
+
+    def generate_rule_based_cot(self, task: str, max_steps: int = 8) -> List[str]:
         cot = []
         current = task
         def add_padding(txt: str) -> str:

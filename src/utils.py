@@ -1,5 +1,5 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-17
+## Modified: 2025-11-18
 
 """
 Utility functions for PD-CLM project.
@@ -9,6 +9,7 @@ import torch
 import numpy as np
 from typing import List, Dict, Any
 import matplotlib.pyplot as plt
+import json
 from scipy.special import softmax
 import time
 import os
@@ -228,3 +229,42 @@ def setup_wandb(project_name: str, experiment_name: str):
     )
     
     return wandb
+
+
+def build_sft_dataset(num_samples: int, agent, max_steps: int = 8) -> List[Dict[str, Any]]:
+    from src.hcl import task_generator
+    samples = []
+    for _ in range(num_samples):
+        task = task_generator()
+        cot_steps = agent.generate_rule_based_cot(task, max_steps=max_steps)
+        target = cot_steps[-1] if cot_steps else task
+        samples.append({"input": task, "target": target})
+    return samples
+
+
+def save_sft_jsonl(path: str, samples: List[Dict[str, Any]]):
+    with open(path, "w", encoding="utf-8") as f:
+        for s in samples:
+            f.write(json.dumps(s, ensure_ascii=False) + "\n")
+
+
+def build_tool_augmented_sft_dataset(num_samples: int, agent, tools) -> List[Dict[str, Any]]:
+    import random
+    samples = []
+    for _ in range(num_samples):
+        a = random.randint(100, 999)
+        b = random.randint(100, 999)
+        task = f"What is the result of {a} * {b} and what is the capital of Turkey?"
+        calc_q = f"{a} * {b}"
+        calc_res = tools.run_call(f'[TOOL_CALL: calculator("{calc_q}")]')
+        srch_q = "capital of Turkey"
+        srch_res = tools.run_call(f'[TOOL_CALL: search("{srch_q}")]')
+        target = (
+            f"Step 1: I need to solve the multiplication. [TOOL_CALL: calculator(\"{calc_q}\")]\n"
+            f"[TOOL_RESULT: \"{calc_res}\"]\n"
+            f"Step 2: Now I need to find the capital of Turkey. [TOOL_CALL: search(\"{srch_q}\")]\n"
+            f"[TOOL_RESULT: \"{srch_res}\"]\n"
+            f"Final answer: The result is {calc_res} and the capital of Turkey is Ankara."
+        )
+        samples.append({"input": task, "target": target})
+    return samples
