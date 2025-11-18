@@ -38,10 +38,13 @@ def build_faiss_index(chunks: list[str], embed_dim: int = 512, device: str = "cp
     if device == "cuda" and torch.cuda.is_available():
         pse = pse.cuda()
     vecs = []
-    for c in chunks:
+    total = len(chunks)
+    for i, c in enumerate(chunks):
         v = pse(c)
         m = v.mean(dim=0).detach().float().cpu().numpy()
         vecs.append(m)
+        if (i + 1) % max(1, total // 10) == 0:
+            print(f"[FAISS] Embedded {i+1}/{total} chunks ({(i+1)/max(total,1)*100:.1f}%)")
     X = np.stack(vecs, axis=0)
     norms = np.linalg.norm(X, axis=1, keepdims=True) + 1e-9
     Xn = X / norms
@@ -92,16 +95,28 @@ def main():
         write_text(out_txt, ds, "text")
         src_path = out_txt
     elif ds_name == "wikipedia":
-        out_txt = f"data/raw/wikipedia_{args.split}.txt" if full else "data/raw/wikipedia_sample.txt"
+        lang = args.wiki_date.split(".")[-1] if "." in args.wiki_date else "en"
+        out_txt = f"data/raw/wikipedia_{lang}_{args.split}.txt" if full else f"data/raw/wikipedia_{lang}_sample.txt"
         try:
             ds = load_dataset("wikimedia/wikipedia", args.wiki_date, split=f"{args.split}[:{pct}%]")
             write_text(out_txt, ds, "text")
+            print(f"[DATA] Wrote text to {out_txt}")
             src_path = out_txt
         except Exception as e:
             # Fallback: legacy builder is no longer supported in recent datasets versions; degrade to wikitext
             print(f"[WARN] Failed to load wikimedia/wikipedia ({args.wiki_date}): {e}. Falling back to wikitext.")
             ds = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"{args.split}[:{pct}%]")
             out_txt = f"data/raw/wikitext_{args.split}.txt" if full else "data/raw/wikitext_sample.txt"
+            write_text(out_txt, ds, "text")
+            print(f"[DATA] Wrote text to {out_txt}")
+            src_path = out_txt
+    elif ds_name == "cc100":
+        try:
+            base_url = "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/main/"
+            raise RuntimeError("Use HF Hub Turkish corpora with parquet support instead of cc100 script")
+        except Exception:
+            ds = load_dataset("wikimedia/wikipedia", "20231101.tr", split=f"{args.split}[:{pct}%]")
+            out_txt = f"data/raw/wikipedia_tr_{args.split}.txt" if full else "data/raw/wikipedia_tr_sample.txt"
             write_text(out_txt, ds, "text")
             src_path = out_txt
     else:
@@ -113,6 +128,7 @@ def main():
         device = "cuda" if torch.cuda.is_available() else "cpu"
         index, Xn = build_faiss_index(chunks, embed_dim=args.embed_dim, device=device)
         save_index(index, args.index_dir, chunks, embed_dim=args.embed_dim)
+        print(f"[INDEX] Saved FAISS index to {args.index_dir}")
 
 if __name__ == "__main__":
     main()

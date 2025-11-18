@@ -4,7 +4,11 @@
 import torch
 import torch.nn as nn
 from typing import List, Tuple
-import wandb
+import os
+try:
+    import wandb
+except Exception:
+    wandb = None
 import torch.distributed as dist
 import os
 
@@ -88,7 +92,11 @@ class PDCLM(ReflectivePDCLM):
 
 
 def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
-    wandb.init(project="pdclm-final")
+    if wandb is not None:
+        try:
+            wandb.init(project="pdclm-final")
+        except Exception:
+            os.environ['WANDB_DISABLED'] = 'true'
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=50)
     os.makedirs("checkpoints", exist_ok=True)
@@ -112,7 +120,11 @@ def full_train(model: PDCLM, num_epochs: int = 3, steps_per_epoch: int = 200):
                     "hmr/sim_max": float(model.hmr.last_sim_max.item()),
                     "hmr/ssm_age_max": float(model.hmr.ssm_age.max().item())
                 }
-            wandb.log({"reward": reward, "reward_base": base_reward, "loss": loss.item(), "epoch": epoch, "step": step, "latency_ms": latency_ms, **hmr_metrics})
+            if wandb is not None and os.environ.get('WANDB_DISABLED') != 'true':
+                try:
+                    wandb.log({"reward": reward, "reward_base": base_reward, "loss": loss.item(), "epoch": epoch, "step": step, "latency_ms": latency_ms, **hmr_metrics})
+                except Exception:
+                    pass
         avg_reward = sum(rewards) / max(len(rewards), 1)
         scheduler.step(avg_reward)
         print(f"Epoch {epoch} Avg Reward: {avg_reward:.4f}")
@@ -126,8 +138,11 @@ def instruction_sft_train(model: PDCLM, num_samples: int = 1000, epochs: int = 1
     ddp = world > 1
     if ddp and not dist.is_initialized():
         dist.init_process_group(backend=("nccl" if torch.cuda.is_available() else "gloo"))
-    if rank == 0:
-        wandb.init(project="pdclm-sft")
+    if rank == 0 and wandb is not None:
+        try:
+            wandb.init(project="pdclm-sft")
+        except Exception:
+            os.environ['WANDB_DISABLED'] = 'true'
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     os.makedirs("checkpoints", exist_ok=True)
     ccm = model.ccm
@@ -138,7 +153,10 @@ def instruction_sft_train(model: PDCLM, num_samples: int = 1000, epochs: int = 1
     else:
         samples = build_sft_dataset(num_samples, agent)
     if ddp:
-        model_wrapped = torch.nn.parallel.DistributedDataParallel(model)
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        device_ids = [local_rank] if torch.cuda.is_available() else None
+        output_device = local_rank if torch.cuda.is_available() else None
+        model_wrapped = torch.nn.parallel.DistributedDataParallel(model, device_ids=device_ids, output_device=output_device, find_unused_parameters=False)
     else:
         model_wrapped = model
     for epoch in range(epochs):
@@ -151,8 +169,11 @@ def instruction_sft_train(model: PDCLM, num_samples: int = 1000, epochs: int = 1
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             total_loss += float(loss.item())
-            if rank == 0:
-                wandb.log({"sft/loss": float(loss.item()), "epoch": epoch, "step": i})
+            if rank == 0 and wandb is not None and os.environ.get('WANDB_DISABLED') != 'true':
+                try:
+                    wandb.log({"sft/loss": float(loss.item()), "epoch": epoch, "step": i})
+                except Exception:
+                    pass
         avg = total_loss / max(len(samples[rank::world]) if ddp else len(samples), 1)
         if rank == 0:
             print(f"SFT Epoch {epoch} Avg Loss: {avg:.4f}")
@@ -199,13 +220,19 @@ def ppo_train(model: PDCLM, epochs: int = 1, tasks_per_epoch: int = 10, lr: floa
     ddp = world > 1
     if ddp and not dist.is_initialized():
         dist.init_process_group(backend=("nccl" if torch.cuda.is_available() else "gloo"))
-    if rank == 0:
-        wandb.init(project="pdclm-ppo")
+    if rank == 0 and wandb is not None:
+        try:
+            wandb.init(project="pdclm-ppo")
+        except Exception:
+            os.environ['WANDB_DISABLED'] = 'true'
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     os.makedirs("checkpoints", exist_ok=True)
     tools = setup_default_tools() if use_tools else None
     if ddp:
-        model_wrapped = torch.nn.parallel.DistributedDataParallel(model)
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        device_ids = [local_rank] if torch.cuda.is_available() else None
+        output_device = local_rank if torch.cuda.is_available() else None
+        model_wrapped = torch.nn.parallel.DistributedDataParallel(model, device_ids=device_ids, output_device=output_device, find_unused_parameters=False)
     else:
         model_wrapped = model
     for epoch in range(epochs):
@@ -243,8 +270,11 @@ def ppo_train(model: PDCLM, epochs: int = 1, tasks_per_epoch: int = 10, lr: floa
             optimizer.step()
             avg_loss += float(loss.item())
             avg_reward += float(reward)
-            if rank == 0:
-                wandb.log({"ppo/loss": float(loss.item()), "ppo/reward": float(reward), "tools/calls": tool_calls, "tools/errors": tool_errors})
+            if rank == 0 and wandb is not None and os.environ.get('WANDB_DISABLED') != 'true':
+                try:
+                    wandb.log({"ppo/loss": float(loss.item()), "ppo/reward": float(reward), "tools/calls": tool_calls, "tools/errors": tool_errors})
+                except Exception:
+                    pass
         avg_loss /= max(tasks_per_epoch, 1)
         avg_reward /= max(tasks_per_epoch, 1)
         if rank == 0:

@@ -14,12 +14,14 @@ sys.path.append('.')
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 import json
-import wandb
+import random
 
 # Import our model and utilities
 from src.model import PDCLMBase, pretrain_step, create_batches
@@ -48,6 +50,16 @@ def main():
     parser.add_argument('--wandb', action='store_true')
     parser.add_argument('--wandb-project', type=str, default='pdclm')
     parser.add_argument('--wandb-run', type=str, default='faz1')
+    parser.add_argument('--embed-dim', type=int, default=256)
+    parser.add_argument('--num-layers', type=int, default=4)
+    parser.add_argument('--heads', type=int, default=4)
+    parser.add_argument('--window-size', type=int, default=256)
+    parser.add_argument('--max-windows', type=int, default=16)
+    parser.add_argument('--pse-scale', type=float, default=None)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--early-stop-patience', type=int, default=5)
+    parser.add_argument('--early-stop-delta', type=float, default=1e-3)
+    parser.add_argument('--accumulation-steps', type=int, default=4)
     args = parser.parse_args()
 
     print("🚀 PDCLM Faz-1 Training Script (500 iterations) - FIXED")
@@ -56,23 +68,32 @@ def main():
     # Setup
     world = int(os.environ.get('WORLD_SIZE', '1'))
     rank = int(os.environ.get('RANK', '0'))
+    local_rank = int(os.environ.get('LOCAL_RANK', '0'))
     ddp = world > 1
     if ddp and not dist.is_initialized():
         dist.init_process_group(backend=('nccl' if torch.cuda.is_available() else 'gloo'))
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f'cuda:{local_rank}')
+    else:
+        device = torch.device('cpu')
     print(f"🔧 Device: {device}")
     print(f"🔥 GPU: {torch.cuda.get_device_name() if torch.cuda.is_available() else 'CPU'}")
     if not args.wandb:
         os.environ['WANDB_DISABLED'] = 'true'
     else:
-        wandb.init(project=args.wandb_project, name=args.wandb_run, config={
-            'iterations': args.iterations,
-            'batch_size': args.batch_size,
-            'lr': args.lr,
-            'log_interval': args.log_interval,
-            'val_interval': args.val_interval,
-            'data_path': args.data_path
-        })
+        try:
+            import wandb
+            wandb.init(project=args.wandb_project, name=args.wandb_run, config={
+                'iterations': args.iterations,
+                'batch_size': args.batch_size,
+                'lr': args.lr,
+                'log_interval': args.log_interval,
+                'val_interval': args.val_interval,
+                'data_path': args.data_path
+            })
+        except Exception:
+            os.environ['WANDB_DISABLED'] = 'true'
     
     data_path = args.data_path
     print(f"\n📖 Loading data from: {data_path}")
@@ -97,15 +118,37 @@ def main():
     
     # Initialize model
     print(f"\n🤖 Initializing PDCLMBase model...")
-    model = PDCLMBase(embed_dim=256, num_layers=4, heads=4, window_size=512)
+    # Seeding for reproducibility
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    model = PDCLMBase(embed_dim=args.embed_dim, num_layers=args.num_layers, heads=args.heads, window_size=args.window_size, max_windows=args.max_windows)
     model = model.to(device)
-    model_wrapped = DDP(model) if ddp else model
+    if ddp:
+        model_wrapped = DDP(model, device_ids=[local_rank] if device.type == 'cuda' else None, output_device=local_rank if device.type == 'cuda' else None, find_unused_parameters=False)
+    else:
+        model_wrapped = model
     
+    if args.pse_scale is not None:
+        try:
+            model.pse.scale.data = torch.tensor(float(args.pse_scale), device=device)
+            print(f"🔧 PSE scale set to {args.pse_scale}")
+        except Exception:
+            print(f"⚠️ Could not set PSE scale")
     print(f"✅ Model created")
     print(f"📊 Parameters: {model.count_parameters():,}")
     
     learning_rate = args.lr
     optimizer = AdamW(model.parameters(), lr=learning_rate)
+    torch.cuda.empty_cache()
+    os.environ['PYTORCH_ALLOC_CONF'] = os.environ.get('PYTORCH_ALLOC_CONF', 'expandable_segments:True')
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    except Exception:
+        pass
     
     batch_size = args.batch_size
     num_iterations = args.iterations
@@ -115,13 +158,15 @@ def main():
     print(f"\n🎯 Training configuration:")
     print(f"  - Iterations: {num_iterations}")
     print(f"  - Batch size: {batch_size:,} characters")
+    print(f"  - Accumulation steps: {args.accumulation_steps}")
     print(f"  - Learning rate: {learning_rate}")
     print(f"  - Log interval: {log_interval}")
     print(f"  - Validation interval: {val_interval}")
     
     # Create training batches
     print(f"\n📦 Creating training batches...")
-    train_batches = list(create_batches(train_text, batch_size=batch_size))
+    stride = max(batch_size // 2, args.window_size)
+    train_batches = list(create_batches(train_text, batch_size=batch_size, stride=stride))
     print(f"✅ Created {len(train_batches)} training batches")
     
     # Training loop
@@ -143,32 +188,83 @@ def main():
             (model_wrapped.module if isinstance(model_wrapped, DDP) else model).load_state_dict(state['model'])
             optimizer.load_state_dict(state['optimizer'])
             start_iter = int(state.get('iteration', 0))
+    best_val = float('inf')
+    no_improve = 0
+    accumulation_steps = max(1, int(args.accumulation_steps))
+    optimizer.zero_grad()
     for iteration in range(start_iter, num_iterations):
         # Select batch (cycle through available batches)
         batch_text = train_batches[iteration % len(train_batches)]
         
         # Training step
         try:
-            loss = pretrain_step(model_wrapped, batch_text, optimizer, device)
+            mini_chars = min(1024, max(batch_size // 8, 512))
+            try:
+                loss = pretrain_step(
+                    model_wrapped,
+                    batch_text[:batch_size],
+                    optimizer,
+                    device,
+                    mini_batch_chars=mini_chars,
+                    do_step=False,
+                    scale_loss=1.0/accumulation_steps
+                )
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                mini_chars = max(256, mini_chars // 2)
+                loss = pretrain_step(
+                    model_wrapped,
+                    batch_text[:batch_size],
+                    optimizer,
+                    device,
+                    mini_batch_chars=mini_chars,
+                    do_step=False,
+                    scale_loss=1.0/accumulation_steps
+                )
             train_losses.append(loss)
+
+            if (iteration + 1) % accumulation_steps == 0:
+                torch.nn.utils.clip_grad_norm_((model_wrapped.module if isinstance(model_wrapped, DDP) else model).parameters(), max_norm=1.0)
+                optimizer.step()
+                optimizer.zero_grad()
             
             # Logging
             if iteration % log_interval == 0 and rank == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
-                print(f"Iteration {iteration:3d}/{num_iterations} | Train Loss: {loss:.6f} | Time: {elapsed:.1f}s")
-                if args.wandb:
-                    wandb.log({'train_loss': loss, 'iter': iteration, 'time_s': elapsed})
+                current_loss = loss
+                print(f"Iteration {iteration:3d}/{num_iterations} | Train Loss: {current_loss:.6f} | Time: {elapsed:.1f}s")
+                if args.wandb and os.environ.get('WANDB_DISABLED') != 'true':
+                    try:
+                        import wandb
+                        wandb.log({'train_loss': current_loss, 'iter': iteration, 'time_s': elapsed})
+                    except Exception:
+                        pass
             
             if iteration % val_interval == 0 and rank == 0:
                 model.eval()
                 with torch.no_grad():
-                    val_loss = model(val_text)
+                    target_model = (model_wrapped.module if isinstance(model_wrapped, DDP) else model_wrapped)
+                    val_loss = target_model(val_text)
                     val_losses.append(val_loss.item())
                     print(f"           | Val Loss:   {val_loss.item():.6f}")
-                    if args.wandb:
-                        wandb.log({'val_loss': val_loss.item(), 'iter': iteration})
+                    if args.wandb and os.environ.get('WANDB_DISABLED') != 'true':
+                        try:
+                            import wandb
+                            wandb.log({'val_loss': val_loss.item(), 'iter': iteration})
+                        except Exception:
+                            pass
                 model.train()
-            
+
+                if val_losses:
+                    current = val_losses[-1]
+                    if current + args.early_stop_delta < best_val:
+                        best_val = current
+                        no_improve = 0
+                    else:
+                        no_improve += 1
+                        if no_improve >= args.early_stop_patience:
+                            print(f"🛑 Early stopping at iteration {iteration} (patience={args.early_stop_patience})")
+                            break
             # Check for NaN
             if np.isnan(loss):
                 print(f"❌ NaN loss detected at iteration {iteration}")
@@ -313,13 +409,12 @@ def main():
         os.makedirs('experiments', exist_ok=True)
         with open('experiments/faz1_results.json', 'w') as f:
             json.dump(results, f, indent=2)
-        if args.save_every:
-            state = {
-                'model': (model_wrapped.module if isinstance(model_wrapped, DDP) else model).state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'iteration': num_iterations
-            }
-            torch.save(state, str(ckpt_dir / 'faz1_last.pt'))
+        state = {
+            'model': (model_wrapped.module if isinstance(model_wrapped, DDP) else model).state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'iteration': len(train_losses)
+        }
+        torch.save(state, str(ckpt_dir / 'faz1_last.pt'))
         
         print(f"\n💾 Results saved to experiments/faz1_results.json")
         print(f"🎉 PDCLM Faz-1 training completed!")

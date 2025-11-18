@@ -1,9 +1,9 @@
 {
-  "final_train_loss": 2.999974250793457,
-  "final_val_loss": 3.0022730827331543,
-  "min_train_loss": 2.48283314704895,
-  "min_val_loss": 3.0022730827331543,
-  "training_time": 23.328917,
-  "iterations": 500,
+  "final_train_loss": 5.663671875,
+  "final_val_loss": Infinity,
+  "min_train_loss": 5.663671875,
+  "min_val_loss": null,
+  "training_time": 4.09922,
+  "iterations": 1,
   "decision": "PSE output variance art\u0131r (scale=5.0) veya data \u00e7e\u015fitlendir"
 }

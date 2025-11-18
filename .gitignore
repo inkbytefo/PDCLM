@@ -1,49 +1,47 @@
-# PDCLM Project - Git Ignore
-
-# Python
+data/
+checkpoints/
+wandb/
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
-# PyTorch
-*.pth
-*.pt
-
-# WandB logs
-wandb/
-.wandb/
-
-# Data files (too large)
-# data/raw/*.txt  # Removed to allow tracking of sample data
-
-# Model checkpoints
-*.ckpt
-*.model
-
-# Logs
-logs/
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+.cache/
 .vscode/
 .idea/
-
-# Temporary files
+.DS_Store
+Thumbs.db
+.env
+.env.*
+venv/
+.venv/
+ENV/
+env/
+.ipynb_checkpoints/
+logs/
+*.log
+outputs/
+results/
+datasets/
 tmp/
 temp/
-*.tmp
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.index
+*.h5
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.pytype/
+nohup.out
+*.swp
+.python-version
