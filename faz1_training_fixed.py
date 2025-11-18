@@ -171,25 +171,25 @@ def main():
     
     if rank == 0:
         plt.figure(figsize=(14, 8))
-    
-    # Plot training losses
+        
+        # Plot training losses
         plt.subplot(2, 1, 1)
-    plt.plot(train_losses, 'b-', linewidth=2, label='Training Loss')
+        plt.plot(train_losses, 'b-', linewidth=2, label='Training Loss')
         plt.xlabel('Iteration')
         plt.ylabel('Loss')
         plt.title('Faz-1 Next-Pattern Prediction Loss')
         plt.grid(True, alpha=0.3)
         plt.legend()
-    
-    # Add loss statistics
-    if train_losses:
-        final_loss = train_losses[-1]
-        min_loss = min(train_losses)
-        plt.axhline(y=0.5, color='g', linestyle='--', alpha=0.7, label='Target Loss (0.5)')
-        plt.text(0.02, 0.98, f'Final: {final_loss:.4f}\nMin: {min_loss:.4f}', 
-                 transform=plt.gca().transAxes, verticalalignment='top',
-                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        plt.legend()
+        
+        # Add loss statistics
+        if train_losses:
+            final_loss = train_losses[-1]
+            min_loss = min(train_losses)
+            plt.axhline(y=0.5, color='g', linestyle='--', alpha=0.7, label='Target Loss (0.5)')
+            plt.text(0.02, 0.98, f'Final: {final_loss:.4f}\nMin: {min_loss:.4f}', 
+                     transform=plt.gca().transAxes, verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            plt.legend()
     
     # Plot validation losses
         plt.subplot(2, 1, 2)
