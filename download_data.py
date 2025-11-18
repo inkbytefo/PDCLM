@@ -68,33 +68,42 @@ def main():
     parser.add_argument("--chunk_size", type=int, default=1000)
     parser.add_argument("--index_dir", type=str, default="data/index")
     parser.add_argument("--embed_dim", type=int, default=512)
+    parser.add_argument("--wiki_date", type=str, default="20231101.en")
     args = parser.parse_args()
 
     os.makedirs("data/raw", exist_ok=True)
 
     ds_name = args.dataset.lower()
     full = args.full.lower() == "true"
-    pct = args.subset_pct if not full else 100.0
+    pct = int(args.subset_pct) if not full else 100
     if ds_name == "wikitext":
         ds = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"{args.split}[:{pct}%]")
         out_txt = f"data/raw/wikitext_{args.split}.txt" if full else "data/raw/wikitext_sample.txt"
         write_text(out_txt, ds, "text")
         src_path = out_txt
     elif ds_name == "c4":
-        ds = load_dataset("c4", "en", split=f"{args.split}[:{pct}%]")
+        ds = load_dataset("allenai/c4", "en", split=f"{args.split}[:{pct}%]")
         out_txt = f"data/raw/c4_{args.split}.txt" if full else "data/raw/c4_sample.txt"
         write_text(out_txt, ds, "text")
         src_path = out_txt
     elif ds_name == "pile":
-        ds = load_dataset("EleutherAI/pile", split=f"{args.split}[:{pct}%]")
+        ds = load_dataset("monology/pile", split=f"{args.split}[:{pct}%]")
         out_txt = f"data/raw/pile_{args.split}.txt" if full else "data/raw/pile_sample.txt"
         write_text(out_txt, ds, "text")
         src_path = out_txt
     elif ds_name == "wikipedia":
-        ds = load_dataset("wikipedia", "20220301.en", split=f"{args.split}[:{pct}%]")
         out_txt = f"data/raw/wikipedia_{args.split}.txt" if full else "data/raw/wikipedia_sample.txt"
-        write_text(out_txt, ds, "text")
-        src_path = out_txt
+        try:
+            ds = load_dataset("wikimedia/wikipedia", args.wiki_date, split=f"{args.split}[:{pct}%]")
+            write_text(out_txt, ds, "text")
+            src_path = out_txt
+        except Exception as e:
+            # Fallback: legacy builder is no longer supported in recent datasets versions; degrade to wikitext
+            print(f"[WARN] Failed to load wikimedia/wikipedia ({args.wiki_date}): {e}. Falling back to wikitext.")
+            ds = load_dataset("wikitext", "wikitext-103-raw-v1", split=f"{args.split}[:{pct}%]")
+            out_txt = f"data/raw/wikitext_{args.split}.txt" if full else "data/raw/wikitext_sample.txt"
+            write_text(out_txt, ds, "text")
+            src_path = out_txt
     else:
         raise SystemExit(1)
 
