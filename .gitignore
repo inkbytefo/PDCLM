@@ -45,3 +45,7 @@ temp/
 nohup.out
 *.swp
 .python-version
+data/raw/*.txt
+data/raw/*.parquet
+data/index/*
+wandb/
