@@ -49,3 +49,6 @@ data/raw/*.txt
 data/raw/*.parquet
 data/index/*
 wandb/
+
+.github/instructions/kluster-code-verify.instructions.md
+.kluster

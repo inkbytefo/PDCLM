@@ -1,15 +1,13 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-21
+## Modified: 2025-11-16
 
 import pytest
 import sys
 import os
+sys.path.append('..')
+
 import torch
-
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.models.pdclm import PDCLMBase, pretrain_step, create_batches
+from src.model import PDCLMBase, pretrain_step, create_batches
 
 
 def test_model_forward_pass():
@@ -28,8 +26,7 @@ def test_model_training_step():
     text = "a" * 3000
     loss1 = pretrain_step(model, text, optimizer, torch.device('cpu'))
     loss2 = pretrain_step(model, text, optimizer, torch.device('cpu'))
-    # Loss might not strictly decrease in just 2 steps with random init, but shouldn't explode
-    assert loss2 < loss1 * 2.0
+    assert loss2 < loss1 * 1.5  # Hafif düşüş
 
 
 def test_gradient_clipping():
@@ -62,3 +59,18 @@ def test_model_info():
     assert 'window_size' in info
     assert 'total_params' in info
     assert info['embed_dim'] == 256
+    assert info['num_layers'] == 4
+
+
+def test_create_batches():
+    """Test batch creation utility."""
+    text = "Hello world! " * 100
+    batches = list(create_batches(text, batch_size=100, stride=50))
+    
+    assert len(batches) > 0
+    assert all(isinstance(batch, str) for batch in batches)
+    assert all(len(batch) <= 100 for batch in batches)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

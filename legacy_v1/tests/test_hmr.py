@@ -1,15 +1,13 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-21
+## Modified: 2025-11-17
 
 import torch
 import sys
 import os
-import pytest
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from src.memory.hmr import HierarchicalMemoryRouter
+from src.hmr import HierarchicalMemoryRouter
 
 
 def test_hmr_initialization_and_forward():
@@ -24,7 +22,7 @@ def test_hmr_initialization_and_forward():
 
 
 def test_hmr_integration_with_model():
-    from src.models.pdclm import PDCLMBase
+    from src.model import PDCLMBase
     model = PDCLMBase(embed_dim=256, num_layers=2, heads=2, window_size=128)
     assert hasattr(model, 'hmr')
     assert isinstance(model.hmr, HierarchicalMemoryRouter)
@@ -66,6 +64,4 @@ def test_hmr_lsm_retrieval_and_insert():
     sim1 = float(hmr.last_sim_max.item())
     _ = hmr(x + 0.01)
     sim2 = float(hmr.last_sim_max.item())
-    # This assertion is a bit flaky depending on random init, but generally true if similar input
-    # assert sim2 >= sim1 
-    pass
+    assert sim2 >= sim1

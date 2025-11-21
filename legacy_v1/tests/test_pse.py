@@ -1,5 +1,5 @@
 ## Developer: inkbytefo
-## Modified: 2025-11-21
+## Modified: 2025-11-16
 
 import pytest
 import torch
@@ -7,11 +7,10 @@ import time
 import sys
 import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add src directory to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
-from src.layers.pse import PatternStreamEncoder
-from src.utils.entropy import compute_entropy_profile_vectorized, compute_entropy_profile_unoptimized
+from src.pse import PatternStreamEncoder
 
 def test_pse_output_shape():
     pse = PatternStreamEncoder(window_size=64)
@@ -48,6 +47,7 @@ def test_entropy_batched_speed():
 
 def test_entropy_optimization_vs_baseline():
     """Test that optimized version is significantly faster than baseline."""
+    from src.entropy_utils import compute_entropy_profile_vectorized, compute_entropy_profile_unoptimized
     
     # Use larger test sequence for meaningful performance comparison
     test_seq = torch.randint(0, 256, (20000,))
